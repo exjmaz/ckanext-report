@@ -1,8 +1,7 @@
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 
 import click
-
-from . import utils
+import ckanext.report.utils as utils
 
 
 def get_commands():
@@ -25,10 +24,7 @@ def initdb():
 @report.command()
 @click.argument(u'report_list', required=False)
 def generate(report_list):
-    """
-    Generate and cache reports - all of them unless you specify
-    a comma separated list of them.
-    """
+
     if report_list:
         report_list = [s.strip() for s in report_list.split(',')]
     timings = utils.generate(report_list)
@@ -38,8 +34,6 @@ def generate(report_list):
 
 @report.command()
 def list():
-    """ Lists the reports
-    """
     utils.list()
 
 
@@ -47,11 +41,6 @@ def list():
 @click.argument(u'report_name')
 @click.argument(u'report_options', nargs=-1)
 def generate_for_options(report_name, report_options):
-    """
-    Generate and cache a report for one combination of option values.
-    You can leave it with the defaults or specify options
-    as more parameters: key1=value key2=value
-    """
     message = utils.generate_for_options(report_name, report_options)
     if message:
         click.secho(message, fg=u"red")

@@ -2,7 +2,6 @@ from ckanext.report.report_registry import ReportRegistry
 
 import ckan.logic as logic
 
-
 def report_refresh(context=None, data_dict=None):
     """
     Causes the cached data of the report to be refreshed

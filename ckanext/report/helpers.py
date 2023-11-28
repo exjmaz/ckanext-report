@@ -1,6 +1,5 @@
-# encoding: utf-8
+from past.builtins import xrange
 
-from six.moves import range
 from ckanext.report.report_registry import ReportRegistry
 from ckan.plugins import toolkit as tk
 import ckan.lib.helpers
@@ -44,8 +43,8 @@ def relative_url_for(**kwargs):
 
 def chunks(list_, size):
     '''Splits up a given list into 'size' sized chunks.'''
-    for i in range(0, len(list_), size):
-        yield list_[i:i + size]
+    for i in xrange(0, len(list_), size):
+        yield list_[i:i+size]
 
 
 def organization_list():
@@ -60,7 +59,6 @@ def render_datetime(datetime_, date_format=None, with_hours=False):
     '''Render a datetime object or timestamp string as a pretty string
     (Y-m-d H:m).
     If timestamp is badly formatted, then a blank string is returned.
-
     This is a wrapper on the CKAN one which has an American date_format.
     '''
     if not date_format:
@@ -73,7 +71,6 @@ def render_datetime(datetime_, date_format=None, with_hours=False):
 def explicit_default_options(report_name):
     '''Returns the options that are needed for URL parameters to load a report
     with the default options.
-
     Normally you can just load a report at /report/<name> but there is an
     exception for checkboxes that default to True. e.g.
     include_sub_organizations.  If you uncheck the checkbox and submit the form

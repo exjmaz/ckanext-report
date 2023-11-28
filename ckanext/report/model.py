@@ -1,4 +1,4 @@
-# encoding: utf-8
+
 
 import datetime
 import logging
@@ -8,10 +8,7 @@ from sqlalchemy import types, Table, Column, Index, MetaData
 from sqlalchemy.orm import mapper
 
 from ckan import model
-try:
-    from collections import OrderedDict  # from python 2.7
-except ImportError:
-    from sqlalchemy.util import OrderedDict
+from collections import OrderedDict
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +23,7 @@ data_cache_table = Table(
     Column('object_id', types.UnicodeText, index=True),
     Column('key', types.UnicodeText, nullable=False),
     Column('value', types.UnicodeText),
-    Column('created', types.DateTime, default=datetime.datetime.utcnow),
+    Column('created', types.DateTime, default=datetime.datetime.now),
 )
 Index('idx_data_cache_object_id_key', data_cache_table.c.object_id,
       data_cache_table.c.key)
@@ -65,7 +62,7 @@ class DataCache(object):
     """
 
     def __init__(self, **kwargs):
-        for k, v in kwargs.items():
+        for k, v in list(kwargs.items()):
             setattr(self, k, v)
 
     @classmethod
@@ -79,10 +76,11 @@ class DataCache(object):
                     .filter(cls.object_id == object_id)\
                     .first()
         if not item:
+            #log.debug('Does not exist in cache: %s/%s', object_id, key)
             return (None, None)
 
         if max_age:
-            age = datetime.datetime.utcnow() - item.created
+            age = datetime.datetime.now() - item.created
             if age > max_age:
                 log.debug('Cache not returned - it is older than requested %s/%s %r > %r',
                           object_id, key, age, max_age)
@@ -97,10 +95,11 @@ class DataCache(object):
                 # Python 2.7's json library has object_pairs_hook
                 import json
                 value = json.loads(value, object_pairs_hook=OrderedDict)
-            except TypeError:  # Untested
+            except TypeError: # Untested
                 # Python 2.4-2.6
                 import simplejson as json
                 value = json.loads(value, object_pairs_hook=OrderedDict)
+        #log.debug('Cache load: %s/%s "%s"...', object_id, key, repr(value)[:40])
         return value, item.created
 
     @classmethod
@@ -126,15 +125,13 @@ class DataCache(object):
             model.Session.add(item)
         else:
             item.value = value
-        item.created = datetime.datetime.utcnow()
+        item.created = datetime.datetime.now()
 
         log.debug('Cache save: %s/%s', object_id, key)
         model.Session.flush()
         return item.created
 
-
 mapper(DataCache, data_cache_table)
-
 
 def init_tables():
     metadata.create_all(model.meta.engine)

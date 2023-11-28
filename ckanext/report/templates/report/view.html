@@ -3,16 +3,11 @@
 {% block title %}{{ report.title }} - {{ _('Reports') }} - {{ super() }}{% endblock %}
 
 {% block breadcrumb_content %}
-  <li>{{ h.nav_link(_('Reports'), named_route='report.index') }}</li>
-  <li>{{ h.nav_link(report.title, named_route='report.view', report_name=report_name) }}</li>
-  {% if organization %}
-    <li>{{ h.nav_link(organization, named_route='report.org', report_name=report_name, organization=organization) }}</li>
-  {% endif %}
+  {{ h.build_nav('reports', _('Reports')) }}
+  {{ h.build_nav('report-org' if '/organization' in request.environ.get('PATH_INFO', '') else 'report', report.title, report_name=report_name) }}
 {% endblock%}
 
 {% block primary_content_inner %}
-  {% set type = 'asset' if h.check_ckan_version(min_version="2.9.0", max_version="3.0.0") else 'resource' %}
-  {% include 'report/report_js_' ~ type ~ '.html' %}
       <h1>{{ report.title }}</h1>
       <p>{{ report.description }}</p>
       <p>
@@ -62,3 +57,24 @@
       {% endif %}
   </div>
 {% endblock%}
+
+{% block scripts %}
+    {{ super() }}
+    <!--! Tablesorter allows table sorting by clicking on each column -->
+    <script type="text/javascript" src="/scripts/vendor/jquery.tablesorter.min.js"></script>
+    <script type="text/javascript">
+      //<![CDATA[
+      $(document).ready(function()
+        {
+          $("#report-table").tablesorter({
+              dateFormat: "uk",
+          });
+          $(".js-auto-submit").change(function () {
+              $(this).closest("form").submit();
+          });
+        }
+      );
+    // ]]>
+    </script>
+{% endblock%}
+

@@ -1,14 +1,14 @@
-# encoding: utf-8
-import six
+from builtins import str
 import json
+import datetime
 from flask import Blueprint, request, make_response
 
 import ckan.plugins.toolkit as t
 from jinja2.exceptions import TemplateNotFound
 
 from ckanext.report.report_registry import Report
-from ckanext.report.lib import make_csv_from_dicts, ensure_data_is_dicts, anonymise_user_names
-
+from ckanext.report.helpers import relative_url_for
+from collections import OrderedDict
 
 import logging
 log = logging.getLogger(__name__)
@@ -16,10 +16,6 @@ log = logging.getLogger(__name__)
 c = t.c
 
 report = Blueprint(u'report', __name__)
-
-
-def redirect_to_index():
-    return t.redirect_to(t.url_for('report.index'))
 
 
 def index():
@@ -39,34 +35,21 @@ def view(report_name, organization=None, refresh=False):
     except t.ObjectNotFound:
         t.abort(404)
 
-    args = t.request.args
-    rule = request.url_rule.rule
+    rule = request.url_rule
     # ensure correct url is being used
-    if organization or 'organization' in rule:
-        if 'organization' not in report['option_defaults']:
-            # org is supplied but is not a valid input for this report
-            return t.redirect_to(t.url_for('report.view', report_name=report_name, **args))
-    else:
-        org = report['option_defaults'].get('organization')
-        if org:
-            # org is not supplied, but this report has a default value
-            return t.redirect_to(t.url_for('report.org', report_name=report_name, organization=org, **args))
-
-    org_in_params = t.request.args.get('organization')
-    if org_in_params:
+    if 'organization' in rule.rule and 'organization' not in report['option_defaults']:
+        t.redirect_to(relative_url_for(organization=None))
+    elif 'organization' not in rule.rule and 'organization' in report['option_defaults'] and \
+            report['option_defaults']['organization']:
+        org = report['option_defaults']['organization']
+        t.redirect_to(relative_url_for(organization=org))
+    if 'organization' in t.request.params:
         # organization should only be in the url - let the param overwrite
         # the url.
-        # remove organization from form arguments
-        args = {k: v for k, v in args.items(multi=True) if k != 'organization'}
-        return t.redirect_to(t.url_for('report.org', report_name=report_name, organization=org_in_params, **args))
-
-    elif org_in_params == "":
-        # remove empty organization from form arguments
-        args = {k: v for k, v in args.items(multi=True) if k != 'organization'}
-        return t.redirect_to(t.url_for('report.view', report_name=report_name, **args))
+        t.redirect_to(relative_url_for())
 
     # options
-    options = Report.add_defaults_to_options(t.request.args, report['option_defaults'])
+    options = Report.add_defaults_to_options(t.request.params, report['option_defaults'])
     option_display_params = {}
     if 'format' in options:
         format = options.pop('format')
@@ -82,8 +65,7 @@ def view(report_name, organization=None, refresh=False):
             log.warn('Not displaying report option HTML for param %s as option not recognized')
             continue
         option_display_params = {'value': options[option],
-                                 'default': report['option_defaults'][option],
-                                 'report_name': report_name}
+                                 'default': report['option_defaults'][option]}
         try:
             options_html[option] = \
                 t.render_snippet('report/option_%s.html' % option,
@@ -98,7 +80,7 @@ def view(report_name, organization=None, refresh=False):
         refresh = t.asbool(t.request.params.get('refresh'))
         if 'refresh' in options:
             options.pop('refresh')
-    except t.ValueError:
+    except ValueError:
         refresh = False
 
     # Refresh the cache if requested
@@ -111,10 +93,7 @@ def view(report_name, organization=None, refresh=False):
         except t.NotAuthorized:
             t.abort(401)
         # Don't want the refresh=1 in the url once it is done
-        if organization:
-            t.redirect_to(t.url_for('report.org', report_name=report_name, organization=organization))
-        else:
-            t.redirect_to(t.url_for('report.view', report_name=report_name))
+        t.redirect_to(relative_url_for(refresh=None))
 
     # Check for any options not allowed by the report
     for key in options:
@@ -139,7 +118,7 @@ def view(report_name, organization=None, refresh=False):
             filename = 'report_%s.csv' % key
             response = make_response(make_csv_from_dicts(data['table']))
             response.headers['Content-Type'] = 'application/csv'
-            response.headers['Content-Disposition'] = six.text_type('attachment; filename=%s' % (filename))
+            response.headers['Content-Disposition'] = str('attachment; filename=%s' % (filename))
             return response
         elif format == 'json':
             data['generated_at'] = report_date
@@ -159,14 +138,84 @@ def view(report_name, organization=None, refresh=False):
         'report_date': report_date, 'options': options,
         'options_html': options_html,
         'report_template': report['template'],
-        'are_some_results': are_some_results,
-        'organization': organization})
+        'are_some_results': are_some_results})
+
+def make_csv_from_dicts(rows):
+    import csv
+    import io as StringIO
+
+    csvout = StringIO.StringIO()
+    csvwriter = csv.writer(
+        csvout,
+        dialect='excel',
+        quoting=csv.QUOTE_NONNUMERIC
+    )
+    # extract the headers by looking at all the rows and
+    # get a full list of the keys, retaining their ordering
+    headers_ordered = []
+    headers_set = set()
+    for row in rows:
+        new_headers = set(row.keys()) - headers_set
+        headers_set |= new_headers
+        for header in list(row.keys()):
+            if header in new_headers:
+                headers_ordered.append(header)
+    csvwriter.writerow(headers_ordered)
+    for row in rows:
+        items = []
+        for header in headers_ordered:
+            item = row.get(header, 'no record')
+            if isinstance(item, datetime.datetime):
+                item = item.strftime('%Y-%m-%d %H:%M')
+            elif isinstance(item, (int, float, list, tuple)):
+                item = str(item)
+            elif item is None:
+                item = ''
+            else:
+                item = item.encode('utf8')
+            items.append(item)
+        try:
+            csvwriter.writerow(items)
+        except Exception as e:
+            raise Exception("%s: %s, %s" % (e, row, items))
+    csvout.seek(0)
+    return csvout.read()
+
+
+def ensure_data_is_dicts(data):
+    '''Ensure that the data is a list of dicts, rather than a list of tuples
+    with column names, as sometimes is the case. Changes it in place'''
+    if data['table'] and isinstance(data['table'][0], (list, tuple)):
+        new_data = []
+        columns = data['columns']
+        for row in data['table']:
+            new_data.append(OrderedDict(list(zip(columns, row))))
+        data['table'] = new_data
+        del data['columns']
+
+
+def anonymise_user_names(data, organization=None):
+    '''Ensure any columns with names in are anonymised, unless the current user
+    has privileges.
+
+    NB this is only enabled for data.gov.uk - it is custom functionality.
+    '''
+    try:
+        import ckanext.dgu.lib.helpers as dguhelpers
+    except ImportError:
+        # If this is not DGU then cannot do the anonymization
+        return
+    column_names = list(data['table'][0].keys()) if data['table'] else []
+    for col in column_names:
+        if col.lower() in ('user', 'username', 'user name', 'author'):
+            for row in data['table']:
+                row[col] = dguhelpers.user_link_info(
+                    row[col], organization=organization)[0]
 
 
 report.add_url_rule(u'/report', view_func=index)
-report.add_url_rule(u'/reports', 'reports', view_func=redirect_to_index)
 report.add_url_rule(u'/report/<report_name>', view_func=view, methods=['GET', 'POST'])
-report.add_url_rule(u'/report/<report_name>/<organization>', 'org',  view_func=view, methods=['GET', 'POST'])
+report.add_url_rule(u'/report/<report_name>/<organization>', view_func=view)
 
 
 def get_blueprints():
