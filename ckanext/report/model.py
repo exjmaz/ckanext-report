@@ -66,7 +66,7 @@ class DataCache(object):
             setattr(self, k, v)
 
     @classmethod
-    def get(cls, object_id, key, convert_json=False, max_age=None):
+    def get(cls, object_id, key, convert_json=False):
         """
         Retrieves the value and date that it was written if the record with
         object_id/key exists. If not it will return None/None.
@@ -78,13 +78,6 @@ class DataCache(object):
         if not item:
             #log.debug('Does not exist in cache: %s/%s', object_id, key)
             return (None, None)
-
-        if max_age:
-            age = datetime.datetime.now() - item.created
-            if age > max_age:
-                log.debug('Cache not returned - it is older than requested %s/%s %r > %r',
-                          object_id, key, age, max_age)
-                return (None, None)
 
         value = item.value
         if convert_json:
@@ -104,7 +97,7 @@ class DataCache(object):
 
     @classmethod
     def get_if_fresh(cls, *args, **kwargs):
-        return cls.get(*args, max_age=datetime.timedelta(days=2), **kwargs)
+        return cls.get(*args, **kwargs)
 
     @classmethod
     def set(cls, object_id, key, value, convert_json=False):
